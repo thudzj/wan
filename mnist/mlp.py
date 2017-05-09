@@ -10,12 +10,50 @@ class Discriminator(object):
     def __init__(self):
         self.x_dim = 784
         self.name = 'mnist/mlp/d_net'
+        self.y_dim = 10
 
     def __call__(self, x, reuse=True):
         with tf.variable_scope(self.name) as vs:
             if reuse:
                 vs.reuse_variables()
             bs = tf.shape(x)[0]
+            '''
+            fc = tcl.fully_connected(
+                x, 1000,
+                weights_initializer=tf.random_normal_initializer(stddev=0.02),
+                # weights_regularizer=tc.layers.l2_regularizer(2.5e-5),
+                activation_fn=tf.identity
+            )
+            fc = leaky_relu(fc) # tc.layers.batch_norm(fc)
+            fc = tcl.fully_connected(
+                x, 500,
+                weights_initializer=tf.random_normal_initializer(stddev=0.02),
+                # weights_regularizer=tc.layers.l2_regularizer(2.5e-5),
+                activation_fn=tf.identity
+            )
+            fc = leaky_relu(tc.layers.batch_norm(fc))
+            fc = tcl.fully_connected(
+                x, 250,
+                weights_initializer=tf.random_normal_initializer(stddev=0.02),
+                # weights_regularizer=tc.layers.l2_regularizer(2.5e-5),
+                activation_fn=tf.identity
+            )
+            fc = leaky_relu(tc.layers.batch_norm(fc))
+            fc = tcl.fully_connected(
+                x, 250,
+                weights_initializer=tf.random_normal_initializer(stddev=0.02),
+                # weights_regularizer=tc.layers.l2_regularizer(2.5e-5),
+                activation_fn=tf.identity
+            )
+            fc = leaky_relu(tc.layers.batch_norm(fc))
+            fc = tcl.fully_connected(
+                x, 250,
+                weights_initializer=tf.random_normal_initializer(stddev=0.02),
+                # weights_regularizer=tc.layers.l2_regularizer(2.5e-5),
+                activation_fn=tf.identity
+            )
+            fc1 = leaky_relu(tc.layers.batch_norm(fc))
+            '''
             x = tf.reshape(x, [bs, 28, 28, 1])
             conv1 = tc.layers.convolution2d(
                 x, 64, [4, 4], [2, 2],
@@ -36,8 +74,8 @@ class Discriminator(object):
                 activation_fn=tf.identity
             )
             fc1 = leaky_relu(tc.layers.batch_norm(fc1))
-            fc2 = tc.layers.fully_connected(fc1, 1, activation_fn=tf.identity)
-            return fc2
+            fc = tc.layers.fully_connected(fc1, self.y_dim + 1, activation_fn=tf.identity)
+            return fc
 
     @property
     def vars(self):

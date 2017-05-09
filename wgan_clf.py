@@ -74,20 +74,26 @@ class WassersteinGAN(object):
         self.ty = tf.placeholder(tf.float32, [None, self.y_dim], name='ty')
         self.xu = tf.placeholder(tf.float32, [None, self.x_dim], name='xu')
 
-        self.x_ = self.g_net(tf.concat([self.z, self.fy], 1))
+        self.x_ = self.g_net(tf.concat(1, [self.z, self.fy]))
 
         self.d = self.d_net(self.x, reuse=False)
         self.d_ = self.d_net(self.x_)
         self.du = self.d_net(self.xu)
 
-        weight = 0.1
-        weightg = 0.2
-        self.g_loss = -tf.reduce_mean(tf.reduce_sum(self.d_[:, :-1] * (self.fy*(1+weightg)-weightg), 1))
-        self.d_loss_unlabeled = - tf.reduce_mean(tf.reduce_max(self.du[:, :-1], 1)) + tf.reduce_mean(self.du[:, -1])
-        self.d_loss_labeled = - tf.reduce_mean(self.d_[:, -1] - weight*tf.reduce_sum(self.d_[:, :-1], 1)) \
-                              - tf.reduce_mean(tf.reduce_sum(self.d[:, :-1] * (self.ty*(1+weight)-weight), 1) - weight*self.d[:, -1])
-        self.d_loss = self.d_loss_labeled# + self.d_loss_unlabeled * 1.0
+        self.g_loss = -tf.reduce_mean(tf.reduce_sum(self.d_[:, :-1] * (self.fy*1.1-0.1), 1))
+        self.d_loss_unlabeled = - tf.reduce_mean(tf.reduce_max(self.du[:, :-1], 1)) + tf.reduce_mean(self.du[:, -1]) - tf.reduce_mean(tf.reduce_sum(tf.nn.softmax(self.du[:, :-1]) * tf.nn.log_softmax(self.du[:, :-1]), 1))
+        # self.d_loss_unlabeled = - tf.reduce_mean(tf.nn.softmax(self.du[:, :-1]) * tf.nn.log_softmax(self.du[:, :-1]))
+        self.d_loss_labeled = -tf.reduce_mean(self.d_[:, -1]) - tf.reduce_mean(tf.reduce_sum(self.d[:, :-1] * self.ty, 1))
+        # self.d_loss_clf = - tf.reduce_mean(tf.reduce_sum(self.d * self.ty + self.d_ * self.fy, 1))
+        self.d_loss = self.d_loss_labeled + self.d_loss_unlabeled * 1.0
         
+        self.d_loss += tf.reduce_mean(self.d[:, -1])+ tf.reduce_mean(tf.reduce_max(self.d_[:, :-1], 1)) - tf.reduce_mean(tf.reduce_sum(tf.nn.softmax(self.d[:, :-1]) * tf.nn.log_softmax(self.d[:, :-1]), 1)) 
+        # self.g_loss += -tf.reduce_mean(tf.reduce_sum(tf.nn.softmax(self.d_[:, :-1]) * tf.nn.log_softmax( self.d_[:, :-1]), 1))
+        if self.freg:
+            print("Add reg...")
+            self.g_loss += tf.reduce_mean(self.d_[:, -1])
+            self.d_loss += tf.reduce_mean(self.d[:, -1] + self.du[:, -1]) # + tf.reduce_max(self.d_[:, :-1], 1))
+
         self.reg = tc.layers.apply_regularization(
             tc.layers.l1_regularizer(2.5e-5),
             weights_list=[var for var in tf.global_variables() if 'weights' in var.name]
@@ -115,7 +121,7 @@ class WassersteinGAN(object):
         labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
         return labels_one_hot
 
-    def train(self, batch_size=100, num_batches=500):
+    def train(self, batch_size=100, num_batches=300):
         mnist = input_data.read_data_sets('../data/mnist', one_hot = True, validation_size = 0)
         trainx = mnist.train._images
         trainx_unl = trainx.copy()
@@ -127,17 +133,14 @@ class WassersteinGAN(object):
         inds = rng.permutation(trainx.shape[0])
         trainx = trainx[inds]
         trainy = trainy[inds]
-        # trainy_one_hot = np.argmax(trainy, 1)
-        # txs = []
-        # tys = []
-        # for j in range(10):
-        #     print(np.sum(trainy_one_hot==j))
-        #     txs.append(trainx[trainy_one_hot==j][:args.count])
-        #     tys.append(trainy[trainy_one_hot==j][:args.count])
-        # txs = np.concatenate(txs, axis=0)
-        # tys = np.concatenate(tys, axis=0)
-        txs = trainx.copy()
-        tys = trainy.copy()
+        trainy_one_hot = np.argmax(trainy, 1)
+        txs = []
+        tys = []
+        for j in range(10):
+            txs.append(trainx[trainy_one_hot==j][:args.count])
+            tys.append(trainy[trainy_one_hot==j][:args.count])
+        txs = np.concatenate(txs, axis=0)
+        tys = np.concatenate(tys, axis=0)
         nr_batches_train = int(trainx.shape[0]/batch_size)
         nr_batches_test = int(testx.shape[0]/batch_size)
         plt.ion()
@@ -151,7 +154,6 @@ class WassersteinGAN(object):
                 inds = rng.permutation(txs.shape[0])
                 trainx.append(txs[inds])
                 trainy.append(tys[inds])
-            # inx = rng.permutation(txs.shape[0]*(trainx_unl.shape[0]/txs.shape[0]))
             trainx = np.concatenate(trainx, axis=0)
             trainy = np.concatenate(trainy, axis=0)
             trainx_unl = trainx_unl[rng.permutation(trainx_unl.shape[0])]
@@ -160,7 +162,7 @@ class WassersteinGAN(object):
             for tt in range(nr_batches_train): 
                 d_iters = self.d_iters
                 g_iters = self.g_iters
-                if tt == 0 or (t == 0 and tt < 20):
+                if tt == 0:# or (t == 0 and tt < 20):
                      d_iters = 100
                 for _ in range(0, d_iters):
                     bz = self.z_sampler(batch_size, self.z_dim)
